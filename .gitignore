@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Repo data / artifacts (large, generated, not source)
+data/
+data
+
+states/
+states
+
+saved_results/
+saved_results
+
+# Optional: stray checkpoints
+*.pt
+
