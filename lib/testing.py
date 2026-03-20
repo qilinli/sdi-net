@@ -143,6 +143,8 @@ def do_real_test(
     hard[loc_pred_sq.argmax().item()] = dmg_pred_f
 
     test_target_sq = test_target.squeeze()
+    gt_dmg = test_target_sq.max().item()
+    gt_loc = test_target_sq.argmax().item()
     rw_mse = (dmg_pred_f - spec.reference_scalar_damage) ** 2
     rw_err_s = ((smooth.cpu() - test_target_sq.cpu()) ** 2).mean().item()
     rw_err_h = ((hard.cpu() - test_target_sq.cpu()) ** 2).mean().item()
@@ -154,12 +156,15 @@ def do_real_test(
         "rw_err_h": rw_err_h,
         "dmg_pred": dmg_pred_f,
         "loc_argmax": loc_pred_sq.argmax().item(),
+        "gt_dmg": gt_dmg,
+        "gt_loc": gt_loc,
         "best_nll": max_nll,
     }
 
     if print_result:
         print(
-            f"{dmg_pred_f:7.04f} @ {result['loc_argmax']:d} | "
+            f"Pred {dmg_pred_f:7.04f} @ {result['loc_argmax']:d} | "
+            f"GT {gt_dmg:7.04f} @ {gt_loc:d} | "
             f"MSE: {rw_mse:10.04e}, NLL: {loc_nll:10.04e} "
             f"(best: {max_nll:10.04e})"
         )
