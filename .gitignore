@@ -4,6 +4,7 @@ __pycache__/
 
 # Vscode cache
 .vscode/
+.ipynb_checkpoints/
 
 # Repo data / artifacts (large, generated, not source)
 data/
