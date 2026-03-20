@@ -30,7 +30,7 @@ class RunConfig:
     #   data/safetensors/unc={0|1}/{single|double|undamaged}
     subset_name: str = "single"
     snr: float = -1.0
-    epochs: int = 5
+    epochs: int = 200
 
     # dataloaders
     # choose uncertainty split here (unc=0 or unc=1)

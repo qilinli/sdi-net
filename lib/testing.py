@@ -25,6 +25,7 @@ Example::
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -222,3 +223,23 @@ def do_real_test_from_checkpoint(
         spec=spec,
         print_result=print_result,
     )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run SDINet real benchmark from a checkpoint."
+    )
+    parser.add_argument(
+        "checkpoint_path",
+        type=str,
+        help="Path to a saved model.state_dict() checkpoint (.pt).",
+    )
+    args = parser.parse_args()
+
+    do_real_test_from_checkpoint(
+        checkpoint_path=args.checkpoint_path,
+    )
+
+
+if __name__ == "__main__":
+    main()
