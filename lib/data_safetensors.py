@@ -65,7 +65,7 @@ def target_preprocess(data) -> npt.NDArray[np.float32]:
 
 
 def get_dataloaders(
-    name: str,
+    subset_name: str,
     snr: float = 0.0,
     *,
     root: str | Path = "data/safetensors/unc=0",
@@ -75,7 +75,7 @@ def get_dataloaders(
     seed: int = 42,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     root = Path(root)
-    ds_root = root / name
+    ds_root = root / subset_name
     train_ds = SafetensorsDataset(
         ds_root,
         [lambda x: input_preprocess(x, snr=snr), target_preprocess],

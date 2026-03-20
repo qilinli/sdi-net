@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# Vscode cache
+.vscode/
+
 # Repo data / artifacts (large, generated, not source)
 data/
 data

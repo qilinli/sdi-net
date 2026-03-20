@@ -9,10 +9,28 @@ from accelerate import Accelerator
 from torch.utils.data import DataLoader
 from tqdm.auto import trange
 
+# Training / evaluation defaults
+DEFAULT_DROP_NUM = 10
+DEFAULT_DROP_DEN = 65
+DEFAULT_DROP_RATE = DEFAULT_DROP_NUM / DEFAULT_DROP_DEN
+
+COMBO_RNG_SEED = 42
+DEFAULT_VAL_COMBO_COUNT = 51
+DEFAULT_VAL_NUM_SENSORS = 9
+DEFAULT_VAL_CLEN = 10
+EPS = 1e-12
+PERCENT_SCALE = 100.0
+MIXED_PRECISION_MODE = "no"
+
+# Optimizer / scheduler defaults
+DEFAULT_BASE_LR = 5e-4
+DEFAULT_WEIGHT_DECAY = 1.0e-2
+DEFAULT_ADAMW_BETAS = (0.9, 0.999)
+
 
 @torch.no_grad()
 def randomise_bag_size(
-    x: torch.Tensor, drop_rate: float = 10 / 65
+    x: torch.Tensor, drop_rate: float = DEFAULT_DROP_RATE
 ) -> torch.Tensor:
     while not (mask := torch.rand(x.size(-1)) < drop_rate).any():
         pass
@@ -50,7 +68,7 @@ def train_one_epoch(
 
 @lru_cache
 def gen_combos(num_combos: int, length: int, num_sensors: int) -> torch.Tensor:
-    rng = torch.Generator().manual_seed(42)
+    rng = torch.Generator().manual_seed(COMBO_RNG_SEED)
     out = torch.empty((num_combos, num_sensors), dtype=torch.long)
     for i in range(num_combos):
         torch.randperm(num_sensors, out=out[i], generator=rng)
@@ -60,10 +78,12 @@ def gen_combos(num_combos: int, length: int, num_sensors: int) -> torch.Tensor:
 
 
 @torch.inference_mode()
-def val_one_epoch(model, val_dl: DataLoader, clen: int = 10) -> tuple[float, float, float]:
+def val_one_epoch(
+    model, val_dl: DataLoader, clen: int = DEFAULT_VAL_CLEN
+) -> tuple[float, float, float]:
     model.eval()
     state = deepcopy(model.state_dict())
-    combos = gen_combos(51, clen, num_sensors=9)
+    combos = gen_combos(DEFAULT_VAL_COMBO_COUNT, clen, num_sensors=DEFAULT_VAL_NUM_SENSORS)
 
     total_losses = torch.zeros((combos.size(0),))
     total_mse = torch.zeros((combos.size(0),))
@@ -76,8 +96,8 @@ def val_one_epoch(model, val_dl: DataLoader, clen: int = 10) -> tuple[float, flo
         y_hat_dmg, i_dmg, y_hat_loc, i_loc = model[2](model[:2](x.float()), False)
         y_hat_dmg, y_hat_loc = y_hat_dmg[..., combos], y_hat_loc[..., combos]
         i_dmg, i_loc = i_dmg[..., combos], i_loc[..., combos]
-        i_dmg = i_dmg / (i_dmg.sum(-1, keepdim=True) + 1e-12)
-        i_loc = i_loc / (i_loc.sum(-1, keepdim=True) + 1e-12)
+        i_dmg = i_dmg / (i_dmg.sum(-1, keepdim=True) + EPS)
+        i_loc = i_loc / (i_loc.sum(-1, keepdim=True) + EPS)
 
         dmg_preds = torch.einsum("becs,becs->bec", y_hat_dmg, i_dmg)
         loc_preds = torch.einsum("becs,becs->bec", y_hat_loc, i_loc)
@@ -127,7 +147,7 @@ def val_one_epoch(model, val_dl: DataLoader, clen: int = 10) -> tuple[float, flo
 
 
 def do_training(model, opt, sched, train_dl, val_dl, epochs: int, ema=None):
-    accel = Accelerator(mixed_precision="no")
+    accel = Accelerator(mixed_precision=MIXED_PRECISION_MODE)
     model, opt, sched, train_dl, val_dl = accel.prepare(model, opt, sched, train_dl, val_dl)
 
     epoch_bar = trange(epochs)
@@ -147,8 +167,8 @@ def do_training(model, opt, sched, train_dl, val_dl, epochs: int, ema=None):
             f"Train Loss: {train_loss:10.04e}, Val Loss: {val_loss:10.04e} | Val MSE: {val_mse:10.04e} | Val Acc: {val_acc:5.02f}%"
         )
 
-        val_loss, val_mse, val_acc = val_one_epoch(model, val_dl, 10)
-        val_acc *= 100
+        val_loss, val_mse, val_acc = val_one_epoch(model, val_dl, DEFAULT_VAL_CLEN)
+        val_acc *= PERCENT_SCALE
         val_mses.append(val_mse)
         val_accs.append(val_acc)
         val_losses.append(val_loss)
@@ -163,12 +183,12 @@ def do_training(model, opt, sched, train_dl, val_dl, epochs: int, ema=None):
 
 
 def get_opt_and_sched(model, train_dl: DataLoader, epochs: int):
-    base_lr = 5e-4
+    base_lr = DEFAULT_BASE_LR
     opt = torch.optim.AdamW(
         model.parameters(),
         lr=base_lr,
-        weight_decay=1.0e-2,
-        betas=(0.9, 0.999),
+        weight_decay=DEFAULT_WEIGHT_DECAY,
+        betas=DEFAULT_ADAMW_BETAS,
     )
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, base_lr, epochs=epochs, steps_per_epoch=len(train_dl)

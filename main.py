@@ -26,11 +26,14 @@ os.environ["PYTORCH_NVML_BASED_CUDA_CHECK"] = "0"
 
 @dataclass(frozen=True)
 class RunConfig:
-    name: str = "single"
+    # subset folder name under `data_root`:
+    #   data/safetensors/unc={0|1}/{single|double|undamaged}
+    subset_name: str = "single"
     snr: float = -1.0
     epochs: int = 5
 
     # dataloaders
+    # choose uncertainty split here (unc=0 or unc=1)
     data_root: str = "data/safetensors/unc=0"
     num_workers: int = 0
     train_batch_size: int = 128
@@ -50,7 +53,7 @@ class RunConfig:
 
 def main(cfg: RunConfig = RunConfig()) -> None:
     train_dl, val_dl, test_dl = get_dataloaders(
-        cfg.name,
+        cfg.subset_name,
         cfg.snr,
         root=cfg.data_root,
         num_workers=cfg.num_workers,
@@ -92,7 +95,7 @@ def main(cfg: RunConfig = RunConfig()) -> None:
     if cfg.save_uuid_checkpoint:
         states_dir = Path("states")
         states_dir.mkdir(parents=True, exist_ok=True)
-        ckpt_path = states_dir / f"single-damage-sparse-{uuid4()}.pt"
+        ckpt_path = states_dir / f"single-damage-{uuid4()}.pt"
         torch.save(trained_model.state_dict(), ckpt_path)
         print(f"[checkpoint] Saved: {ckpt_path}")
     plot_training_results(
