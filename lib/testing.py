@@ -136,7 +136,9 @@ def do_real_test(
     )
     max_nll = -(loc_pred_sq.log_softmax(-1).max().item())
 
+    # Soft assignment: distribute predicted damage across all locations by probability.
     smooth = dmg_pred_f * loc_pred_sq.softmax(-1)
+    # Hard assignment: place all predicted damage at the single most likely location.
     hard = torch.zeros_like(test_target.squeeze())
     hard[loc_pred_sq.argmax().item()] = dmg_pred_f
 

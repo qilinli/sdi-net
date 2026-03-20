@@ -68,12 +68,16 @@ def train_one_epoch(
 
 @lru_cache
 def gen_combos(num_combos: int, length: int, num_sensors: int) -> torch.Tensor:
+    # Fixed seed keeps validation deterministic across runs.
     rng = torch.Generator().manual_seed(COMBO_RNG_SEED)
     out = torch.empty((num_combos, num_sensors), dtype=torch.long)
     for i in range(num_combos):
+        # Build a random sensor ordering, then keep the first `length` sensors.
         torch.randperm(num_sensors, out=out[i], generator=rng)
+        # Ensure each selected subset prefix is unique among previously built combos.
         while (out[i : i + 1, :length] == out[:i, :length]).all(1).any():
             torch.randperm(num_sensors, out=out[i], generator=rng)
+    # Return shape: (length, num_combos) to match downstream indexing layout.
     return out[:, :length].T
 
 
@@ -81,6 +85,13 @@ def gen_combos(num_combos: int, length: int, num_sensors: int) -> torch.Tensor:
 def val_one_epoch(
     model, val_dl: DataLoader, clen: int = DEFAULT_VAL_CLEN
 ) -> tuple[float, float, float]:
+    # High-level validation protocol:
+    # - Track validation metrics each epoch to monitor convergence.
+    # - Compute location accuracy on a reduced illustrative sample of
+    #   DEFAULT_VAL_COMBO_COUNT randomly generated sensor-failure configurations.
+    # - This keeps validation computationally light during training while still
+    #   providing a stable trend signal; a plateau in late epochs is treated as
+    #   evidence of convergence without obvious overfitting.
     model.eval()
     state = deepcopy(model.state_dict())
     combos = gen_combos(DEFAULT_VAL_COMBO_COUNT, clen, num_sensors=DEFAULT_VAL_NUM_SENSORS)

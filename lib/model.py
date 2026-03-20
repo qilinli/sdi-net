@@ -12,6 +12,8 @@ from lib.midn import Midn
 @dataclass(frozen=True)
 class ModelConfig:
     # input shape assumptions (after preprocessing)
+    # Must match `sensor_dim` in `lib.data_safetensors.input_preprocess`: raw acc is
+    # 3-axis per sensor, but by default only the first (x) axis is kept → 1 input channel.
     in_channels: int = 1
     time_len: int = 500
     n_sensors: int = 65
