@@ -32,7 +32,17 @@ DEFAULT_ADAMW_BETAS = (0.9, 0.999)
 def randomise_bag_size(
     x: torch.Tensor, drop_rate: float = DEFAULT_DROP_RATE
 ) -> torch.Tensor:
-    while not (mask := torch.rand(x.size(-1)) < drop_rate).any():
+    """Randomly keep a non-empty subset of sensors from the last axis."""
+    if x.size(-1) == 0:
+        raise ValueError("Input has no sensor dimension to sample from")
+    if drop_rate <= 0.0:
+        return x
+    if drop_rate >= 1.0:
+        # Keep exactly one sensor to avoid empty-tensor forward passes.
+        keep_idx = torch.randint(x.size(-1), (1,), device=x.device)
+        return x.index_select(-1, keep_idx)
+
+    while not (mask := torch.rand(x.size(-1), device=x.device) < drop_rate).any():
         pass
     return x[..., mask]
 

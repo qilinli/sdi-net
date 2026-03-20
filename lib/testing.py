@@ -6,21 +6,15 @@ What this module does
 - Loads input / label tensors from ``data/Testing_SingleEAcc9Sensor0.5sec.mat``.
 - Runs ``do_real_test(model, ...)`` forward pass + notebook-style metrics.
 
-What this module does **not** do
--------------------------------
-- **No checkpoint loading.** Build the network (e.g. ``build_model``), optionally
-  ``torch.load`` a state dict yourself, then pass the ``nn.Module`` into
-  ``do_real_test``.
+What this module also provides
+------------------------------
+- Checkpoint helpers: ``load_model_from_checkpoint`` and
+  ``do_real_test_from_checkpoint``.
+- A direct CLI entrypoint: ``python -m lib.testing <checkpoint_path>``.
 
 Example::
 
-    from lib.model import ModelConfig, build_model
-    from lib.testing import do_real_test
-
-    model = build_model(ModelConfig())
-    state = torch.load("path/to.pt", map_location="cpu")
-    model.load_state_dict(state)
-    do_real_test(model)
+    python -m lib.testing states/single-damage-sparse-<uuid>.pt
 """
 
 from __future__ import annotations
