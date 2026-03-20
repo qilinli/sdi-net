@@ -14,10 +14,10 @@ DEFAULT_DROP_NUM = 10
 DEFAULT_DROP_DEN = 65
 DEFAULT_DROP_RATE = DEFAULT_DROP_NUM / DEFAULT_DROP_DEN
 
-COMBO_RNG_SEED = 42
-DEFAULT_VAL_COMBO_COUNT = 51
-DEFAULT_VAL_NUM_SENSORS = 9
-DEFAULT_VAL_CLEN = 10
+SUBSET_RNG_SEED = 42
+DEFAULT_VAL_SUBSET_COUNT = 51
+DEFAULT_VAL_NUM_SENSORS = 65
+DEFAULT_VAL_SUBSET_SIZE = 10
 EPS = 1e-12
 PERCENT_SCALE = 100.0
 MIXED_PRECISION_MODE = "no"
@@ -67,46 +67,69 @@ def train_one_epoch(
 
 
 @lru_cache
-def gen_combos(num_combos: int, length: int, num_sensors: int) -> torch.Tensor:
+def gen_sensor_subsets(
+    num_subsets: int, subset_size: int, total_sensors: int
+) -> torch.Tensor:
+    '''
+    Generate deterministic, unique random sensor subsets for validation.
+
+    Each generated subset is formed by taking the first `subset_size` indices
+    from a random permutation of `total_sensors`. The selected prefixes are
+    enforced to be unique across all `num_subsets`.
+
+    Returns
+    -------
+    torch.Tensor
+        Tensor of shape `(subset_size, num_subsets)` containing sensor indices.
+    '''
+    if subset_size > total_sensors:
+        raise ValueError(
+            f"subset_size ({subset_size}) must be <= total_sensors ({total_sensors})"
+        )
     # Fixed seed keeps validation deterministic across runs.
-    rng = torch.Generator().manual_seed(COMBO_RNG_SEED)
-    out = torch.empty((num_combos, num_sensors), dtype=torch.long)
-    for i in range(num_combos):
-        # Build a random sensor ordering, then keep the first `length` sensors.
-        torch.randperm(num_sensors, out=out[i], generator=rng)
-        # Ensure each selected subset prefix is unique among previously built combos.
-        while (out[i : i + 1, :length] == out[:i, :length]).all(1).any():
-            torch.randperm(num_sensors, out=out[i], generator=rng)
-    # Return shape: (length, num_combos) to match downstream indexing layout.
-    return out[:, :length].T
+    rng = torch.Generator().manual_seed(SUBSET_RNG_SEED)
+    out = torch.empty((num_subsets, total_sensors), dtype=torch.long)
+    for i in range(num_subsets):
+        # Build a random sensor ordering, then keep the first `subset_size` sensors.
+        torch.randperm(total_sensors, out=out[i], generator=rng)
+        # Ensure each selected subset prefix is unique among previously built subsets.
+        while (out[i : i + 1, :subset_size] == out[:i, :subset_size]).all(1).any():
+            torch.randperm(total_sensors, out=out[i], generator=rng)
+    # Return shape: (subset_size, num_subsets) to match downstream indexing layout.
+    return out[:, :subset_size].T
 
 
 @torch.inference_mode()
 def val_one_epoch(
-    model, val_dl: DataLoader, clen: int = DEFAULT_VAL_CLEN
+    model, val_dl: DataLoader, subset_size: int = DEFAULT_VAL_SUBSET_SIZE
 ) -> tuple[float, float, float]:
-    # High-level validation protocol:
-    # - Track validation metrics each epoch to monitor convergence.
-    # - Compute location accuracy on a reduced illustrative sample of
-    #   DEFAULT_VAL_COMBO_COUNT randomly generated sensor-failure configurations.
-    # - This keeps validation computationally light during training while still
-    #   providing a stable trend signal; a plateau in late epochs is treated as
-    #   evidence of convergence without obvious overfitting.
+    '''
+    Validate one epoch under sampled sensor-failure subsets.
+
+    The routine evaluates loss, distributed-map MSE, and location accuracy on a
+    reduced set of `DEFAULT_VAL_SUBSET_COUNT` randomly generated sensor subsets.
+    This keeps validation lightweight while preserving a stable convergence
+    signal across epochs.
+    '''
     model.eval()
     state = deepcopy(model.state_dict())
-    combos = gen_combos(DEFAULT_VAL_COMBO_COUNT, clen, num_sensors=DEFAULT_VAL_NUM_SENSORS)
+    sensor_subsets = gen_sensor_subsets(
+        DEFAULT_VAL_SUBSET_COUNT,
+        subset_size=subset_size,
+        total_sensors=DEFAULT_VAL_NUM_SENSORS,
+    )
 
-    total_losses = torch.zeros((combos.size(0),))
-    total_mse = torch.zeros((combos.size(0),))
-    loc_corr = torch.zeros((combos.size(0),))
+    total_losses = torch.zeros((sensor_subsets.size(0),))
+    total_mse = torch.zeros((sensor_subsets.size(0),))
+    loc_corr = torch.zeros((sensor_subsets.size(0),))
 
     for x, y in val_dl:
         y_dmg, y_loc = y.max(-1, keepdim=True)
         y_loc = y_loc[:, 0]
 
         y_hat_dmg, i_dmg, y_hat_loc, i_loc = model[2](model[:2](x.float()), False)
-        y_hat_dmg, y_hat_loc = y_hat_dmg[..., combos], y_hat_loc[..., combos]
-        i_dmg, i_loc = i_dmg[..., combos], i_loc[..., combos]
+        y_hat_dmg, y_hat_loc = y_hat_dmg[..., sensor_subsets], y_hat_loc[..., sensor_subsets]
+        i_dmg, i_loc = i_dmg[..., sensor_subsets], i_loc[..., sensor_subsets]
         i_dmg = i_dmg / (i_dmg.sum(-1, keepdim=True) + EPS)
         i_loc = i_loc / (i_loc.sum(-1, keepdim=True) + EPS)
 
@@ -178,7 +201,9 @@ def do_training(model, opt, sched, train_dl, val_dl, epochs: int, ema=None):
             f"Train Loss: {train_loss:10.04e}, Val Loss: {val_loss:10.04e} | Val MSE: {val_mse:10.04e} | Val Acc: {val_acc:5.02f}%"
         )
 
-        val_loss, val_mse, val_acc = val_one_epoch(model, val_dl, DEFAULT_VAL_CLEN)
+        val_loss, val_mse, val_acc = val_one_epoch(
+            model, val_dl, DEFAULT_VAL_SUBSET_SIZE
+        )
         val_acc *= PERCENT_SCALE
         val_mses.append(val_mse)
         val_accs.append(val_acc)

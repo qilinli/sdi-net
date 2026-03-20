@@ -95,7 +95,7 @@ def main(cfg: RunConfig = RunConfig()) -> None:
     if cfg.save_uuid_checkpoint:
         states_dir = Path("states")
         states_dir.mkdir(parents=True, exist_ok=True)
-        ckpt_path = states_dir / f"single-damage-{uuid4()}.pt"
+        ckpt_path = states_dir / f"single-damage-sparse-{uuid4()}.pt"
         torch.save(trained_model.state_dict(), ckpt_path)
         print(f"[checkpoint] Saved: {ckpt_path}")
     plot_training_results(
